@@ -7,6 +7,7 @@ from sklearn.linear_model import LinearRegression
 # from sklearn.ensemble import  RandomForestRegressor
 # from sklearn.ensemble import  BaggingRegressor
 # from sklearn.ensemble import  AdaBoostRegressor
+from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import  GradientBoostingRegressor
 from xgboost import XGBRegressor
 
@@ -107,9 +108,21 @@ class ModelSelect:
             xgbr = XGBRegressor()
             models_metrics = self.models(xgbr, train_x, test_x, train_y, test_y, models_metrics,'')
 
-            xgbr_hyper = XGBRegressor(n_estimators=1500, max_depth=5, learning_rate=0.05)
-            models_metrics = self.models(xgbr_hyper, train_x, test_x, train_y, test_y, models_metrics,'hyper')
-            xgbr_hyper.save_model(r'../model/' + xgbr_hyper.__class__.__name__ + '.json')
+            xgbr_nest = XGBRegressor(n_estimators=500, max_depth=7, learning_rate=0.01)
+            models_metrics = self.models(xgbr_nest, train_x, test_x, train_y, test_y, models_metrics,'learning_rate=0.5')
+
+            # using cross validation to tune xgbregressor model
+            params = {
+                'n_estimators': [500, 1000, 1500, 2000],
+                'learning_rate': [0.05, 0.075, 0.1],
+                'max_depth': [7, 9],
+                'reg_lambda': [0.3, 0.5]
+            }
+
+            xgbr_cv = GridSearchCV(estimator=xgbr, param_grid=params, cv=5, n_jobs=-1)
+            models_metrics = self.models(xgbr_cv, train_x, test_x, train_y, test_y, models_metrics, 'cv')
+            print("Best parameters set:", xgbr_cv.best_params_)
+            xgbr_nest.save_model(r'../model/' + xgbr_nest.__class__.__name__ + '.json')
 
             print(models_metrics)
 
@@ -118,13 +131,18 @@ class ModelSelect:
         except Exception as err:
             print(f"unexpected {err=}, {type(err)=}")
 
-    def models(self, model,train_x, test_x, train_y, test_y, metrics, hyper):
+
+    def models(self, model,train_x, test_x, train_y, test_y, metrics, param):
         try:
             model.fit(train_x, train_y)
             prediction = model.predict(test_x)
-            rsquare = model.score(test_x, test_y)
+            if param == 'cv':
+                rsquare = model.best_score_
+            else:
+                rsquare = model.score(test_x, test_y)
+
             mae = mean_absolute_error(test_y, prediction)
-            models_metrics = self.models_metrics_log(model.__class__.__name__ + ' ' + hyper, rsquare, mae, metrics)
+            models_metrics = self.models_metrics_log(model.__class__.__name__ + ' ' + param, rsquare, mae, metrics)
 
             return models_metrics
         except Exception as err:
@@ -143,10 +161,11 @@ class ModelSelect:
 
     def load_save_model(self):
         # Loading the xgboost model from the JSON file
-
         xgbr_hyper = XGBRegressor()
-        xgbr_hyper.load_model('XGBRegressor.json')
-        prediction = xgbr_hyper.predict(test_x)
+        xgbr_hyper.load_model(r'../model/XGBRegressor.json')
+        # prediction = xgbr_hyper.predict('new_data') call this when new data available
+
+
 
 if __name__ == "__main__":
     ms = ModelSelect()
@@ -159,5 +178,5 @@ if __name__ == "__main__":
     ms.explore_data(prop_data)
     x, y, data = ms.preprocess_data(prop_data)
     ms.build_models(x, y, data, models_summary)
-    ms.load_save_mode()
+    ms.load_save_model()
 
